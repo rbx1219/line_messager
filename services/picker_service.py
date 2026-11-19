@@ -2,7 +2,7 @@
 
 按下後透過 photo-syncer 把照片移出相簿並加入黑名單（之後隨機挑選不會再選到）。
 按鈕用 postback（data 不會出現在聊天室）：
-  picker:exclude:<album>|<media_id>
+  picker:exclude:<album>|<offset>|<media_id>   （舊格式 <album>|<media_id> 仍可用）
   picker:page:<album>|<offset>
 """
 import logging
@@ -27,7 +27,7 @@ def parse_command(text):
     return None
 
 
-def _bubble(item, album):
+def _bubble(item, album, offset):
     date = (item.get("time") or "")[:10]
     return {
         "type": "bubble",
@@ -40,7 +40,7 @@ def _bubble(item, album):
         "footer": {"type": "box", "layout": "vertical", "paddingAll": "8px", "contents": [
             {"type": "button", "style": "secondary", "height": "sm",
              "action": {"type": "postback", "label": "🚫 不要這張",
-                        "data": f"picker:exclude:{album}|{item['media_id']}", "displayText": "🚫 不要這張"}},
+                        "data": f"picker:exclude:{album}|{offset}|{item['media_id']}", "displayText": "🚫 不要這張"}},
         ]},
     }
 
@@ -67,9 +67,20 @@ def build_page(album, offset=0):
             label="上一頁", data=f"picker:page:{album}|{max(offset - PAGE_SIZE, 0)}", display_text="上一頁")))
     return FlexSendMessage(
         alt_text=f"{album}：第 {offset + 1}～{end} 張（共 {total} 張）",
-        contents={"type": "carousel", "contents": [_bubble(it, album) for it in items]},
+        contents={"type": "carousel", "contents": [_bubble(it, album, offset) for it in items]},
         quick_reply=QuickReply(items=buttons) if buttons else None,
     )
+
+
+def _nav_reply(text, album, offset):
+    """移除照片後的回覆：附上「重新整理這一頁」「下一頁」，讓使用者可以繼續挑（quick reply 只會出現在最新一則訊息）。"""
+    items = [
+        {"type": "action", "action": {"type": "postback", "label": "重新整理這一頁",
+                                      "data": f"picker:page:{album}|{offset}", "displayText": "重新整理這一頁"}},
+        {"type": "action", "action": {"type": "postback", "label": "下一頁",
+                                      "data": f"picker:page:{album}|{offset + PAGE_SIZE}", "displayText": "下一頁"}},
+    ]
+    return {"type": "text", "text": text, "quickReply": {"items": items}}
 
 
 def handle_postback(data):
@@ -77,8 +88,10 @@ def handle_postback(data):
     if not data.startswith("picker:"):
         return None
     kind, _, rest = data[len("picker:"):].partition(":")
-    album, _, value = rest.rpartition("|")
-    album = album or DEFAULT_ALBUM
+    parts = rest.split("|")
+    album = parts[0] or DEFAULT_ALBUM
+    value = parts[-1]
+    offset = int(parts[1]) if len(parts) >= 3 and parts[1].isdigit() else 0
     try:
         if kind == "page":
             return build_page(album, int(value or 0))
@@ -88,8 +101,10 @@ def handle_postback(data):
             r.raise_for_status()
             res = r.json()
             if res.get("blacklisted"):
-                return f"🚫 已從「{album}」移除 {res.get('filename')}，以後不會再選到這張"
-            return f"🚫 已從「{album}」移除 {res.get('filename')}（找不到對應的 Synology 照片，未加入黑名單）"
+                text = f"🚫 已從「{album}」移除 {res.get('filename')}，以後不會再選到這張"
+            else:
+                text = f"🚫 已從「{album}」移除 {res.get('filename')}（找不到對應的 Synology 照片，未加入黑名單）"
+            return _nav_reply(text, album, offset)
     except Exception as e:
         logging.error(f"[picker] {kind} 失敗：{e}")
         return "⚠️ 處理失敗，請稍後再試"

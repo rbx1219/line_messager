@@ -29,7 +29,7 @@ def test_first_page_has_10_bubbles_and_next_button():
     bubbles = d["contents"]["contents"]
     assert len(bubbles) == 10
     data = bubbles[0]["footer"]["contents"][0]["action"]["data"]
-    assert data == f"picker:exclude:Google Nest Hub|{MEDIA}0" and len(data) <= 300  # LINE postback data 上限 300
+    assert data == f"picker:exclude:Google Nest Hub|0|{MEDIA}0" and len(data) <= 300  # LINE postback data 上限 300
     labels = [it["action"]["label"] for it in d["quickReply"]["items"]]
     assert labels == ["下一頁（11～20）"]
 
@@ -42,9 +42,19 @@ def test_middle_page_has_prev_and_next():
 
 def test_exclude_calls_photo_syncer():
     with patch.object(ps.requests, "post", return_value=_resp({"blacklisted": True, "filename": "IMG_3.JPG"})) as post:
-        reply = ps.handle_postback(f"picker:exclude:天穗|{MEDIA}3")
-    assert "以後不會再選到" in reply
+        reply = ps.handle_postback(f"picker:exclude:天穗|10|{MEDIA}3")
+    assert "以後不會再選到" in reply["text"]
     assert post.call_args.kwargs["json"] == {"album": "天穗", "media_id": f"{MEDIA}3"}
+    # 移除後仍可繼續操作：重新整理這一頁（offset 10）與下一頁（offset 20）
+    datas = [it["action"]["data"] for it in reply["quickReply"]["items"]]
+    assert datas == ["picker:page:天穗|10", "picker:page:天穗|20"]
+
+
+def test_old_exclude_format_still_works():
+    with patch.object(ps.requests, "post", return_value=_resp({"blacklisted": True, "filename": "a"})) as post:
+        reply = ps.handle_postback(f"picker:exclude:Google Nest Hub|{MEDIA}")
+    assert post.call_args.kwargs["json"]["media_id"] == MEDIA
+    assert reply["quickReply"]["items"][1]["action"]["data"] == "picker:page:Google Nest Hub|10"
 
 
 def test_non_picker_postback_ignored_and_errors_are_friendly():
