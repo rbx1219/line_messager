@@ -20,7 +20,8 @@ def do_upload(person_id, album_name, num_photos, user_id, session, session_data,
             "start_time": start_time,
             "end_time": end_time
         }
-        logging.error(f"開始上傳照片，payload: {payload}")
+        # token 不進 log（gunicorn access log 也刻意不記 query string）
+        logging.info(f"開始上傳照片，payload: { {k: v for k, v in payload.items() if k != 'token'} }")
 
         for _ in range(5):
             response = session.post(f"{Config.PHOTO_API_URL}/upload_photos", params={"token": token}, json=payload)
