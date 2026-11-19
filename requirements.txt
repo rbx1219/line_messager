@@ -7,3 +7,4 @@ flask_bcrypt==1.0.1
 line-bot-sdk==2.4.1
 Pillow==10.3.0
 cachetools==5.3.3
+gunicorn==22.0.0

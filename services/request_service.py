@@ -23,8 +23,8 @@ def do_upload(person_id, album_name, num_photos, user_id, session, session_data,
         logging.error(f"開始上傳照片，payload: {payload}")
 
         for _ in range(5):
-            response = session.post(f"{Config.SERVER_URL}/api/upload/upload_photos", params={"token": token}, json=payload)
-            response2 = session.get(f"{Config.SERVER_URL}/api/upload/upload_records", params={"personID": person_id}, verify=False)
+            response = session.post(f"{Config.PHOTO_API_URL}/upload_photos", params={"token": token}, json=payload)
+            response2 = session.get(f"{Config.PHOTO_API_URL}/upload_records", params={"personID": person_id}, verify=False)
 
             if response.status_code != 200:
                 logging.error(f"❌ sync_photos 回傳非 200：{response.status_code}, {response.text}")
@@ -82,7 +82,7 @@ def request_interval_time_sync(session, user_id, person_id, token, start_time, e
             "start_time": start_time,
             "end_time": end_time
         }
-        url = f"{Config.SERVER_URL}/api/upload/sync_interval_time_photos"
+        url = f"{Config.PHOTO_API_URL}/sync_interval_time_photos"
         response = session.post(url, params={"token": token}, json=payload)
         if response.status_code != 200:
             logging.error(f"request_sync API failed: {response.status_code}, url={url}, body={response.text}")
@@ -94,7 +94,7 @@ def request_interval_time_sync(session, user_id, person_id, token, start_time, e
 
 def request_sync(session, user_id, person_id, token, user_states):
     try:
-        url = f"{Config.SERVER_URL}/api/upload/sync_latest_photo/{person_id}"
+        url = f"{Config.PHOTO_API_URL}/sync_latest_photo/{person_id}"
         response = session.get(url, params={"token": token})
         if response.status_code != 200:
             logging.error(f"request_sync API failed: {response.status_code}, url={url}, body={response.text}")
@@ -114,7 +114,7 @@ def get_faces(session, user_id, user_states):
     try:
         logging.info(f"get_faces called for user {user_id}, current state: {user_states.get(user_id)}")
 
-        response = session.get(f"{Config.SERVER_URL}/api/upload/update_people", params={"user_id": user_id})
+        response = session.get(f"{Config.PHOTO_API_URL}/update_people", params={"user_id": user_id})
         if response.status_code == 200:
             faces = response.json()
 
@@ -133,7 +133,7 @@ def get_faces(session, user_id, user_states):
 def get_album_list(token, user_id):
     try:
         response = requests.post(
-            f"{Config.SERVER_URL}/api/upload/list_albums",
+            f"{Config.PHOTO_API_URL}/list_albums",
             params={"token": token},
             timeout=10
         )

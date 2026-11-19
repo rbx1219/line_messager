@@ -1,0 +1,13 @@
+**/__pycache__
+**/.pytest_cache
+**/.env
+**/.env*
+!.env.example
+**/*.log
+sessions/
+user_ids.txt
+people_list
+*.png
+fonts/
+.git/
+tests/

@@ -242,7 +242,8 @@ def send_flex_album(album_titles, covers=None):
     carousel = {"type": "carousel", "contents": bubbles}
     return FlexSendMessage(alt_text="請選擇相簿上傳", contents=carousel)
 
-def save_user_id(uid, user_ids_file='user_ids.txt'):
+def save_user_id(uid, user_ids_file=None):
+    user_ids_file = user_ids_file or Config.USER_IDS_FILE
     if os.path.exists(user_ids_file):
         with open(user_ids_file, 'r', encoding='utf-8') as f:
             existing_ids = set(line.strip() for line in f if line.strip())
