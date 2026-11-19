@@ -3,6 +3,9 @@ import json
 import requests
 from services.message_handler import handle_message
 from services.allowlist_service import is_allowed, notify_admins_of_request, handle_admin_command
+from services.picker_service import (
+    parse_command as parse_picker_command, build_page as build_picker_page, handle_postback as handle_picker_postback,
+)
 from utils.flex_message_builder import build_payload, send_already_bound_msg, save_user_id
 from services.session_manager import load_session, save_session
 from config.config import Config
@@ -40,8 +43,11 @@ def handle_webhook(data, token):
 
     elif event["type"] == "message":
         admin_reply = handle_admin_command(uid, message_text) if allowed else None
+        picker_album = parse_picker_command(message_text) if allowed else None
         if admin_reply is not None:
             payload = build_payload(reply_token, admin_reply)
+        elif picker_album is not None:
+            payload = build_payload(reply_token, build_picker_page(picker_album))
         elif allowed:
             reply_text = handle_message(uid, message_text, session, session_data, token)
             payload = build_payload(reply_token, reply_text)
@@ -59,6 +65,16 @@ def handle_webhook(data, token):
         save_session(uid, session_data)
 
         return {"status": "success"}
+
+    elif event["type"] == "postback":
+        # 照片挑選器的按鈕（不要這張 / 上一頁 / 下一頁）；只有白名單成員能用
+        reply = handle_picker_postback(event.get("postback", {}).get("data", "")) if allowed else None
+        if reply is None:
+            return {"status": "ignored"}
+        r = requests.post(Config.LINE_REPLY_URL, json=build_payload(reply_token, reply), headers=Config.headers)
+        if r.status_code != 200:
+            logging.error(f"picker reply 失敗：{r.status_code} {r.text}")
+        return {"status": "postback handled"}
 
     return {"status": "ignored"}
 
