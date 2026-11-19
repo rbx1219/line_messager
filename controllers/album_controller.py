@@ -29,7 +29,13 @@ def get_albums():
         if not covers:
             return jsonify({"error": "No covers found"}), 400
         line_bot_api.push_message(user_id, send_flex_album(album_titles, covers))
-        user_states[user_id]["step"] = "ask_google_album_name"
+        # 只有已經走到選相簿／選張數才把下一則訊息當相簿名；其他步驟（例如還沒選人）不動狀態
+        state = user_states.get(user_id)
+        if state and state.get("step") == "ask_count":
+            history = state.get("history", [])
+            if history and history[-1] == "ask_google_album_name":
+                history.pop()
+            state["step"] = "ask_google_album_name"
     except requests.RequestException as e:
         return jsonify({"error": "Failed to send LINE message"}), 500
     except Exception as e:

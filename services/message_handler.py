@@ -240,7 +240,7 @@ def handle_message(user_id, message_text, session, session_data, token):
             return add_back_button_to_message(handle_album_name_input(user_id, message_text, state))
 
         if current_step == "ask_count":
-            set_user_step(user_id, state, "uploading")
+            # 轉 uploading 由 start_upload 負責：輸入不合法時要停在 ask_count 讓使用者重填
             return add_back_button_to_message(handle_photo_count_input(
                 user_id, message_text, state, session, session_data, token
             ))
@@ -313,19 +313,33 @@ def handle_quick_upload(user_id, state, match, session, session_data, token):
     if not album:
         return "❌ 請指定相簿名稱"
     if state.get("is_uploading"):
-        return "⚠️ 照片正在上傳中，請稍候完成後再試一次。"
+        return BUSY_MSG
     state.update({
         "selected_person_id": [person_id],
         "album_name": album,
         "num_photos": count,
         "start_time": None,
         "end_time": None,
-        "is_uploading": True,
     })
+    logging.info(f"一鍵上傳：person={person_id} count={count} album={album}")
+    return start_upload(user_id, state, session, session_data, token)
+
+
+BUSY_MSG = "⚠️ 照片正在上傳中，請稍候完成後再試一次。"
+
+
+def start_upload(user_id, state, session, session_data, token):
+    """所有上傳入口（一鍵上傳、完成選擇、輸入張數）共用：
+    擋重複上傳、確認有選人，標記 is_uploading 並轉到 uploading，再開背景上傳。"""
+    if state.get("is_uploading"):
+        return BUSY_MSG
+    person_ids = state.get("selected_person_id") or []
+    if not person_ids:
+        return "⚠️ 還沒有選擇人物，請於圖文選單選擇「我要上傳照片」重新開始。"
+    state["is_uploading"] = True
     set_user_step(user_id, state, "uploading", skip_validation=True)
     user_states[user_id] = state
-    logging.info(f"一鍵上傳：person={person_id} count={count} album={album}")
-    return upload_photos(person_id, state, user_id, session, session_data, token)
+    return upload_photos(person_ids[0], state, user_id, session, session_data, token)
 
 
 def handle_custom_parameters(user_id):
@@ -399,21 +413,7 @@ def handle_person_selection(user_id, message_text, state, session, session_data,
                 }
 
             if "album_name" in state and "num_photos" in state:
-                if state.get("is_uploading"):
-                    return {
-                        "type": "text",
-                        "text": "⚠️ 照片正在上傳中，請稍候完成後再試一次。"
-                    }
-
-                state["step"] = "uploading"
-                user_states[user_id] = state
-
-                upload_photos(state["selected_person_id"][0], state, user_id, session, session_data, token)
-
-                return {
-                    "type": "text",
-                    "text": "📤 照片上傳中，請稍候..."
-                }
+                return start_upload(user_id, state, session, session_data, token)
             else:
                 set_user_step(user_id, state, "ask_whether_interval")
                 return get_whether_interval_input_options()
@@ -433,19 +433,11 @@ def handle_person_selection(user_id, message_text, state, session, session_data,
 
 def handle_photo_count_input(user_id, message_text, state, session, session_data, token):
     try:
-        if not message_text.isdigit():
-            return "❌ 請輸入正確的數字"
-        num_photos = int(message_text)
-        person_id = state["selected_person_id"][0]
-
-        if state["is_uploading"]:
-            return "⚠️ 照片正在上傳中，請稍候完成後再試一次。"
-
-        state["num_photos"] = num_photos
-        state["is_uploading"] = True
-        user_states[user_id] = state
-
-        return upload_photos(person_id, state, user_id, session, session_data, token)
+        text = message_text.strip()
+        if not text.isdigit() or not 1 <= int(text) <= QUICK_UPLOAD_MAX:
+            return f"❌ 請輸入 1～{QUICK_UPLOAD_MAX} 之間的數字"
+        state["num_photos"] = int(text)
+        return start_upload(user_id, state, session, session_data, token)
     except Exception as e:
         logging.error(f"handle_photo_count_input 未知的錯誤:{e}")
         return "⚠️ 發生錯誤，請稍後再試。"
