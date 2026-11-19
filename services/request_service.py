@@ -26,6 +26,14 @@ def do_upload(person_id, album_name, num_photos, user_id, session, session_data,
             response = session.post(f"{Config.PHOTO_API_URL}/upload_photos", params={"token": token}, json=payload)
             response2 = session.get(f"{Config.PHOTO_API_URL}/upload_records", params={"personID": person_id}, verify=False)
 
+            if response.status_code == 409:
+                # photo-syncer：同一本相簿已有上傳在進行（每次上傳會先清空相簿，不能同時跑兩個）
+                try:
+                    msg = response.json().get("error") or "相簿正在上傳中"
+                except ValueError:
+                    msg = "相簿正在上傳中"
+                line_bot_api.push_message(user_id, TextSendMessage(text=f"⚠️ {msg}"))
+                break
             if response.status_code != 200:
                 logging.error(f"❌ sync_photos 回傳非 200：{response.status_code}, {response.text}")
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 同步失敗，請稍後再試。錯誤碼: {response.status_code}"))

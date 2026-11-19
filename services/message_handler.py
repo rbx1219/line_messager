@@ -371,8 +371,9 @@ def handle_person_selection(user_id, message_text, state, session, session_data,
                     "type": "text",
                     "text": "❌ 請提供有效的人物 ID"
                 }
-            if person_id not in state["selected_person_id"]:
-                state["selected_person_id"].append(person_id)
+            # 一次只上傳一位人物：多人會同時對同一本相簿上傳、互相清掉照片（photo-syncer 也會拒絕並發）
+            state["selected_person_id"] = [person_id]
+            name = next((f.get("name") for f in state.get("faces", []) if str(f.get("ID")) == person_id), None)
 
             selection_already = {
                 "type": "action",
@@ -384,7 +385,7 @@ def handle_person_selection(user_id, message_text, state, session, session_data,
             }
             return {
                 "type": "text",
-                "text": f"✅ 已選擇 {len(state['selected_person_id'])} 位人物，可回到上一步重新選擇一人或輸入『完成選擇』繼續下一步。",
+                "text": f"✅ 已選擇{name or '人物'}。要換人直接點其他人的「選擇」，或按『完成選擇』繼續。",
                 "quickReply": {
                     "items": [selection_already]
                 }
@@ -407,8 +408,7 @@ def handle_person_selection(user_id, message_text, state, session, session_data,
                 state["step"] = "uploading"
                 user_states[user_id] = state
 
-                for person_id in state["selected_person_id"]:
-                    upload_photos(person_id, state, user_id, session, session_data, token)
+                upload_photos(state["selected_person_id"][0], state, user_id, session, session_data, token)
 
                 return {
                     "type": "text",
