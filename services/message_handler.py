@@ -1,3 +1,4 @@
+import re
 import threading
 from linebot.models import FlexSendMessage
 from utils.flex_message_builder import build_face_bubbles, get_album_name_input_options, get_whether_interval_input_options
@@ -186,6 +187,11 @@ def handle_message(user_id, message_text, session, session_data, token):
         if message_text == "返回上一步":
             return add_back_button_to_message(go_back_step(user_id))
 
+        # 一鍵上傳（每週提醒的預設按鈕）：不管目前在哪一步都直接開始
+        quick = QUICK_UPLOAD_RE.match(message_text.strip())
+        if quick:
+            return handle_quick_upload(user_id, state, quick, session, session_data, token)
+
         if message_text == "使用自訂參數":
             set_user_step(user_id, state, "ask_person", skip_validation=True)
             return handle_custom_parameters(user_id)
@@ -294,6 +300,33 @@ def get_sync_interval_time(user_id, token, start_time, end_time):
 def handle_list_albums(user_id, token):
     threading.Thread(target=get_album_list, args=(token, user_id)).start()
     return "📂 正在列出所有相簿，請稍候..."
+
+# 格式：一鍵上傳 <personID> <張數> <相簿名>（相簿名可含空白），由 photo_syncer tools/line_reminder.py 的預設按鈕送出
+QUICK_UPLOAD_RE = re.compile(r"^一鍵上傳\s+(\d+)\s+(\d+)\s+(.+)$")
+QUICK_UPLOAD_MAX = 500
+
+
+def handle_quick_upload(user_id, state, match, session, session_data, token):
+    person_id, count, album = match.group(1), int(match.group(2)), match.group(3).strip()
+    if not 1 <= count <= QUICK_UPLOAD_MAX:
+        return f"❌ 張數需在 1～{QUICK_UPLOAD_MAX} 之間"
+    if not album:
+        return "❌ 請指定相簿名稱"
+    if state.get("is_uploading"):
+        return "⚠️ 照片正在上傳中，請稍候完成後再試一次。"
+    state.update({
+        "selected_person_id": [person_id],
+        "album_name": album,
+        "num_photos": count,
+        "start_time": None,
+        "end_time": None,
+        "is_uploading": True,
+    })
+    set_user_step(user_id, state, "uploading", skip_validation=True)
+    user_states[user_id] = state
+    logging.info(f"一鍵上傳：person={person_id} count={count} album={album}")
+    return upload_photos(person_id, state, user_id, session, session_data, token)
+
 
 def handle_custom_parameters(user_id):
     try:
