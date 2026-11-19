@@ -66,7 +66,24 @@ def test_non_admin_commands_fall_through(app):
     assert al.handle_admin_command(ADMIN, "我要上傳照片") is None
 
 
-def test_list_and_bad_format(app):
+def test_list_masks_ids(app):
     out = al.handle_admin_command(ADMIN, "名單")
-    assert "2 人" in out and MEMBER in out
+    assert "2 人" in out and "1. 管理員" in out and "2. 家人" in out
+    assert MEMBER not in out and ADMIN not in out          # 不顯示完整 ID
+    assert al.mask_id(MEMBER) in out
     assert "格式" in al.handle_admin_command(ADMIN, "開通 not-an-id")
+
+
+def test_disable_by_number_name_or_id(app):
+    for ref in ("2", "家人", MEMBER):
+        al.handle_admin_command(ADMIN, f"開通 {MEMBER} 家人")  # 確保存在
+        assert "已停用 家人" in al.handle_admin_command(ADMIN, f"停用 {ref}")
+        assert not al.is_allowed(MEMBER)
+
+
+def test_disable_errors(app):
+    assert "沒有編號 9" in al.handle_admin_command(ADMIN, "停用 9")
+    assert "沒有「路人」" in al.handle_admin_command(ADMIN, "停用 路人")
+    assert "不能停用管理員" in al.handle_admin_command(ADMIN, "停用 1")
+    al.handle_admin_command(ADMIN, f"開通 {STRANGER} 家人")
+    assert "請改用編號" in al.handle_admin_command(ADMIN, "停用 家人")
