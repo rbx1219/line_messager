@@ -13,7 +13,8 @@ from linebot.models import FlexSendMessage, PostbackAction, QuickReply, QuickRep
 from config.config import Config
 
 DEFAULT_ALBUM = "Google Nest Hub"
-PAGE_SIZE = 10
+PAGE_SIZE = 50          # 一頁 50 張 = 一次回覆 5 則 carousel × 10 張（LINE：一次回覆最多 5 則、carousel 最多 12 張）
+PER_CAROUSEL = 10
 COMMAND = "挑照片"
 
 
@@ -65,11 +66,17 @@ def build_page(album, offset=0):
     if offset > 0:
         buttons.append(QuickReplyButton(action=PostbackAction(
             label="上一頁", data=f"picker:page:{album}|{max(offset - PAGE_SIZE, 0)}", display_text="上一頁")))
-    return FlexSendMessage(
-        alt_text=f"{album}：第 {offset + 1}～{end} 張（共 {total} 張）",
-        contents={"type": "carousel", "contents": [_bubble(it, album, offset) for it in items]},
-        quick_reply=QuickReply(items=buttons) if buttons else None,
-    )
+    chunks = [items[i:i + PER_CAROUSEL] for i in range(0, len(items), PER_CAROUSEL)]
+    messages = []
+    for n, chunk in enumerate(chunks):
+        first = offset + n * PER_CAROUSEL + 1
+        messages.append(FlexSendMessage(
+            alt_text=f"{album}：第 {first}～{first + len(chunk) - 1} 張（共 {total} 張）",
+            contents={"type": "carousel", "contents": [_bubble(it, album, offset) for it in chunk]},
+            # quick reply 只會顯示在最後一則訊息上
+            quick_reply=QuickReply(items=buttons) if buttons and n == len(chunks) - 1 else None,
+        ))
+    return messages
 
 
 def _nav_reply(text, album, offset):
